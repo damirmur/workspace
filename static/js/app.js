@@ -31,20 +31,20 @@ class WorkspaceApp {
     for (const [key, element] of Object.entries(this.dom)) {
       if (!element) {
         console.error(`Критическая ошибка: Элемент DOM для '${key}' не найден!`);
-        return; 
+        return;
       }
     }
 
     await this.dbManager.connect();
     this.dom.title.textContent = `Пространство #${this.workspaceId}`;
-    
+
     this.initCloseSynchronization();
     await this.loadServerTimezones();
     await this.syncPull();
-    await this.loadEntities(); 
+    await this.loadEntities();
   }
 
-    async loadServerTimezones() {
+  async loadServerTimezones() {
     try {
       const response = await fetch('/api/timezones');
       if (response.ok) {
@@ -116,7 +116,8 @@ class WorkspaceApp {
     const groups = {
       note: { title: '📝 Заметки', defaultName: 'Новая заметка', defaultData: { content: '' }, items: [] },
       project: { title: '📁 Проекты', defaultName: 'Новый проект', defaultData: { tasks: [] }, items: [] },
-      directory: { title: '🗂️ Справочники', defaultName: 'Новый справочник', defaultData: { columns: ['Название', 'Описание'], rows: [] }, items: [] }
+      directory: { title: '🗂️ Справочники', defaultName: 'Новый справочник', defaultData: { columns: ['Название', 'Описание'], rows: [] }, items: [] },
+      skill: { title: '🤖 Роботы-скиллы', defaultName: 'Новый робот', defaultData: { script: '' }, items: [] } // Добавлено!
     };
 
     // Сортируем элементы по группам
@@ -135,13 +136,13 @@ class WorkspaceApp {
         <span>${group.title}</span>
         <button class="add-group-item-btn" title="Добавить элемент">→</button>
       `;
-      
+
       // Клик по кнопке "+" внутри группы
       groupHeader.querySelector('.add-group-item-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         this.createNewEntity(type, { title: group.defaultName, ...group.defaultData });
       });
-      
+
       this.dom.list.appendChild(groupHeader);
 
       // Рендерим элементы группы
@@ -162,15 +163,15 @@ class WorkspaceApp {
 
   selectEntity(entity) {
     this.selectedEntity = entity;
-    
+
     this.dom.list.querySelectorAll('.entity-item').forEach(li => li.classList.remove('active'));
     const activeLi = this.dom.list.querySelector(`.entity-item[data-id="${entity.id}"]`);
     if (activeLi) activeLi.classList.add('active');
 
     this.dom.canvas.innerHTML = '';
-    
+
     const component = CanvasUIFactory.create(
-      entity, 
+      entity,
       (ent) => this.updateEntity(ent),
       (id) => this.deleteEntity(id)
     );
@@ -201,13 +202,13 @@ class WorkspaceApp {
     if (listItem) {
       listItem.textContent = updatedEntity.title;
     }
-    this.syncPushDebounced(); 
+    this.syncPushDebounced();
   }
 
   async deleteEntity(id) {
     await this.repository.delete(id);
     this.entities = this.entities.filter(ent => ent.id !== id);
-    
+
     if (this.selectedEntity && this.selectedEntity.id === id) {
       this.selectedEntity = null;
       this.dom.canvas.innerHTML = '<div id="empty-state">Выберите сущность слева, чтобы начать работу</div>';
@@ -232,4 +233,6 @@ class WorkspaceApp {
 document.addEventListener('DOMContentLoaded', () => {
   const app = new WorkspaceApp();
   app.init();
+
+  window.appInstance = app;
 });
