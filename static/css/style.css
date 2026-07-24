@@ -1,0 +1,55 @@
+    body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; }
+    #sidebar { width: 250px; background: #f4f4f6; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
+    #sidebar-header { padding: 15px; border-bottom: 1px solid #ccc; }
+    #entity-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+    #entity-list li { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #eee; }
+    #entity-list li:hover, #entity-list li.active { background: #e2e2e8; }
+    #workspace-canvas { flex-grow: 1; padding: 20px; background: #fff; overflow-y: auto; }
+    .btn-group { display: flex; gap: 5px; padding: 10px; background: #eef; }
+    button { cursor: pointer; padding: 6px 12px; }
+    /* Добавьте это в ваш файл static/css/style.css */
+
+.sidebar-header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Базовые стили индикатора */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+/* Состояние: Синхронизировано */
+.sync-badge.synced {
+  background-color: #e6f4ea;
+  color: #137333;
+}
+
+/* Состояние: В процессе */
+.sync-badge.syncing {
+  background-color: #feefe3;
+  color: #b06000;
+}
+.sync-badge.syncing .sync-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* Состояние: Ошибка / Оффлайн */
+.sync-badge.offline {
+  background-color: #fce8e6;
+  color: #c5221f;
+}
+
+/* Анимация вращения иконки */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

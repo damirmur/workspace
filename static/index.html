@@ -1,0 +1,72 @@
+<!-- static/index.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>ООП Workspace App</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; }
+    #sidebar { width: 260px; background: #f4f4f6; border-right: 1px solid #ccc; display: flex; flex-direction: column; }
+    #sidebar-header { padding: 15px; border-bottom: 1px solid #ccc; }
+    #entity-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
+    #entity-list li.entity-item { padding: 10px 15px 10px 25px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 0.95rem; }
+    #entity-list li.entity-item:hover, #entity-list li.entity-item.active { background: #e2e2e8; }
+    #workspace-canvas { flex-grow: 1; padding: 20px; background: #fff; overflow-y: auto; }
+    .sidebar-header-content { display: flex; align-items: center; justify-content: space-between; }
+    
+    /* Стили для новых заголовков групп с кнопками */
+    .group-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      background: #eaf0f6;
+      padding: 8px 10px 8px 15px;
+      font-size: 0.85rem;
+      color: #4a5568;
+      border-top: 1px solid #d9e2ec;
+      border-bottom: 1px solid #d9e2ec;
+      margin-top: 10px;
+    }
+    .group-header:first-child { margin-top: 0; }
+    .add-group-item-btn {
+      background: transparent;
+      border: none;
+      color: #007bff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .add-group-item-btn:hover { background: #d9e2ec; }
+    
+    .sync-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
+    .sync-badge.synced { background-color: #e6f4ea; color: #137333; }
+    .sync-badge.syncing { background-color: #feefe3; color: #b06000; }
+    .sync-badge.offline { background-color: #fce8e6; color: #c5221f; }
+  </style>
+</head>
+<body>
+
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <div class="sidebar-header-content">
+        <h3 id="workspace-title" style="margin: 0;">Загрузка...</h3>
+        <span id="sync-status" class="sync-badge offline">
+          <span class="sync-icon">⏳</span>
+          <span class="sync-text">Старт</span>
+        </span>
+      </div>
+    </div>
+    <ul id="entity-list"></ul>
+  </aside>
+
+  <main id="workspace-canvas">
+    <div id="empty-state">Выберите сущность слева, чтобы начать работу</div>
+  </main>
+
+  <script src="/js/app.js" type="module"></script>
+</body>
+</html>
