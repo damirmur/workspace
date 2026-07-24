@@ -1,6 +1,7 @@
 import { NoteCanvasComponent } from './NoteCanvasComponent.js';
 import { ProjectCanvasComponent } from './ProjectCanvasComponent.js';
-import { DirectoryCanvasComponent } from './DirectoryCanvasComponent.js'; // Импортируем
+import { DirectoryCanvasComponent } from './directory/DirectoryCanvasComponent.js'; // ПУТЬ ИЗМЕНИЛСЯ!
+
 
 export class CanvasUIFactory {
   static create(entity, onUpdate, onDelete) {
