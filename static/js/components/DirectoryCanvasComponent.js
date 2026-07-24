@@ -1,17 +1,18 @@
-// static/js/components/DirectoryCanvasComponent.js
 import { BaseCanvasComponent } from './BaseCanvasComponent.js';
-import { FieldTypes } from '../fields/FieldRegistry.js'; // Импортируем типы
+import { FieldTypes } from '../fields/FieldRegistry.js';
 
 export class DirectoryCanvasComponent extends BaseCanvasComponent {
     constructor(entity, onUpdate, onDelete) {
         super(entity, onUpdate, onDelete);
         if (!this.entity.columns) this.entity.columns = ['Название', 'Описание'];
-        // Храним маппинг: имя_колонки -> тип (по умолчанию TEXT)
         if (!this.entity.columnTypes) {
             this.entity.columnTypes = {};
             this.entity.columns.forEach(col => { this.entity.columnTypes[col] = 'TEXT'; });
         }
         if (!this.entity.rows) this.entity.rows = [];
+
+        // Храним текущее значение фильтра в памяти компонента
+        this.currentSearchQuery = '';
     }
 
     render() {
@@ -19,7 +20,7 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
         wrapper.className = 'directory-workspace';
 
         wrapper.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
         <h2 id="directory-title-text" style="margin:0; padding:4px; border-radius:4px;">🗂️ ${this.entity.title}</h2>
         <div style="display:flex; gap:10px;">
           <button id="add-column-btn" style="padding: 8px 12px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">+ Колонка</button>
@@ -27,18 +28,38 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
           <button id="dir-delete-btn" style="padding: 8px 12px; background:#dc3545; color:white; border:none; border-radius:4px; cursor:pointer;">Удалить</button>
         </div>
       </div>
+
+      <!-- Фильтрация строк таблицы справочника -->
+      <div style="margin-bottom: 15px;">
+        <input type="text" id="table-search-input" placeholder="🔍 Интерактивный поиск по всем колонкам справочника..." style="width:100%; padding:8px; border:1px solid #cbd5e0; border-radius:4px; box-sizing:border-box;">
+      </div>
+
       <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:0.95rem;">
+        <table style="width:100%; border-collapse:collapse; margin-top:5px; font-size:0.95rem;">
           <thead><tr id="table-head-row"></tr></thead>
           <tbody id="table-body"></tbody>
         </table>
       </div>
     `;
 
+        const titleHeader = wrapper.querySelector('#directory-title-text');
         const headRow = wrapper.querySelector('#table-head-row');
         const tableBody = wrapper.querySelector('#table-body');
+        const searchInput = wrapper.querySelector('#table-search-input');
 
-        // 1. Рендеринг шапки таблицы с возможностью СМЕНЫ ТИПА колонки
+        // Восстанавливаем значение поиска, если была перерисовка дерева
+        if (searchInput) {
+            searchInput.value = this.currentSearchQuery;
+        }
+
+        if (titleHeader) {
+            this.makeEditable(titleHeader, (newTitle) => {
+                this.entity.title = newTitle.replace(/^🗂️\s*/, '');
+                this.onUpdate(this.entity);
+            });
+        }
+
+        // Рендеринг шапки
         this.entity.columns.forEach((colName, colIndex) => {
             const currentType = this.entity.columnTypes[colName] || 'TEXT';
             const th = document.createElement('th');
@@ -59,23 +80,17 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
         <button class="del-col-btn" style="position:absolute; right:4px; top:4px; background:none; border:none; color:#dc3545; cursor:pointer; font-size:0.75rem;">✕</button>
       `;
 
-            // Смена типа данных колонки
             th.querySelector('.col-type-select').addEventListener('change', (e) => {
                 const selectedType = e.target.value;
                 this.entity.columnTypes[colName] = selectedType;
-
-                // Сбрасываем значения строк под дефолт структуры выбранного типа данных
                 this.entity.rows.forEach(row => {
                     if (selectedType === 'BOOLEAN') row[colName] = false;
-                    else if (selectedType === 'TIMESTAMP') row[colName] = { utc: Date.now(), offset: '+00:00' }; // Для времени инициализируем объект
+                    else if (selectedType === 'TIMESTAMP') row[colName] = { utc: Date.now(), offset: '+00:00' };
                     else row[colName] = '';
                 });
-
-                // ТЕПЕРЬ ТУТ СТРЕЛОЧНАЯ ФУНКЦИЯ, ОШИБКА ИСЧЕЗЛА!
                 this.saveAndRefresh();
             });
 
-            // Переименование имени колонки
             this.makeEditable(th.querySelector('.col-title'), (newName) => {
                 this.entity.columns[colIndex] = newName;
                 this.entity.columnTypes[newName] = currentType;
@@ -100,14 +115,56 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
             headRow.appendChild(th);
         });
 
-        // Техническая колонка действий
         const thAction = document.createElement('th');
         thAction.style.cssText = 'background:#f1f3f5; border:1px solid #dee2e6; width:40px;';
         headRow.appendChild(thAction);
 
-        // 2. Рендеринг строк таблицы на базе фабрики полей
+        // Функция фильтрации строк на клиенте (In-Memory)
+        const filterTableRows = () => {
+            this.currentSearchQuery = searchInput.value.toLowerCase().trim();
+            const rowsDOM = tableBody.querySelectorAll('tr');
+
+            this.entity.rows.forEach((row, index) => {
+                const trDOM = rowsDOM[index];
+                if (!trDOM) return;
+
+                if (!this.currentSearchQuery) {
+                    trDOM.style.display = ''; // Показываем строку, если поиск пуст
+                    return;
+                }
+
+                // Сканируем все ячейки текущей строки на совпадение с поисковым запросом
+                let isMatch = false;
+                for (const colName of this.entity.columns) {
+                    const type = this.entity.columnTypes[colName] || 'TEXT';
+                    const cellValue = row[colName];
+                    let textToSearch = '';
+
+                    // Извлекаем текстовое представление ячейки в зависимости от её типа данных
+                    if (type === 'TIMESTAMP' && cellValue && cellValue.utc) {
+                        textToSearch = new Date(cellValue.utc).toLocaleString() + (cellValue.zoneName || '');
+                    } else if (type === 'JSON' && cellValue) {
+                        textToSearch = JSON.stringify(cellValue);
+                    } else if (type === 'ZIP_FILE' && cellValue) {
+                        textToSearch = cellValue.fileName || '';
+                    } else if (cellValue !== undefined && cellValue !== null) {
+                        textToSearch = String(cellValue);
+                    }
+
+                    if (textToSearch.toLowerCase().includes(this.currentSearchQuery)) {
+                        isMatch = true;
+                        break; // Если совпадение найдено хотя бы в одной колонке, прерываем цикл поиска по строке
+                    }
+                }
+
+                trDOM.style.display = isMatch ? '' : 'none'; // Скрываем или показываем tr в DOM
+            });
+        };
+
+        // 3. Рендеринг строк таблицы
         this.entity.rows.forEach((row, rowIndex) => {
             const tr = document.createElement('tr');
+            tr.style.transition = 'background 0.2s';
 
             this.entity.columns.forEach(colName => {
                 const td = document.createElement('td');
@@ -116,35 +173,22 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
                 const type = this.entity.columnTypes[colName] || 'TEXT';
                 const fieldProcessor = FieldTypes[type];
 
-                // По умолчанию показываем ячейку в режиме просмотра View
                 td.textContent = fieldProcessor.renderView(row[colName]);
 
-                // По клику переключаем ячейку в режим редактирования Edit
                 td.addEventListener('click', (e) => {
-                    // КРИТИЧЕСКАЯ ПРОВЕРКА: Если внутри ячейки УЖЕ есть инпут, селектор или текстовая область,
-                    // мы выходим, чтобы не сбрасывать фокус ввода и не ломать селектор зон!
-                    if (td.querySelector('input') || td.querySelector('select') || td.querySelector('textarea')) {
-                        return;
-                    }
-
-                    const type = this.entity.columnTypes[colName] || 'TEXT';
-                    const fieldProcessor = FieldTypes[type];
+                    if (td.querySelector('input') || td.querySelector('select') || td.querySelector('textarea')) return;
 
                     td.innerHTML = '';
-
-                    // Генерируем компонент редактирования
                     const editComponent = fieldProcessor.renderEdit(row[colName], (newValue) => {
                         row[colName] = newValue;
-                        this.onUpdate(this.entity); // Фоновое сохранение через Debounce
-
-                        // Потеря фокуса (blur) вернет ячейку в текстовый режим View
+                        this.onUpdate(this.entity);
                         td.innerHTML = '';
                         td.textContent = fieldProcessor.renderView(newValue);
+                        // Если ячейку отредактировали, проверяем, подходит ли она под текущий фильтр
+                        filterTableRows();
                     });
 
                     td.appendChild(editComponent);
-
-                    // Автоматический фокус для текстовых полей
                     const innerInput = editComponent.querySelector('input[type="text"], input[type="number"], textarea');
                     if (innerInput) innerInput.focus();
                 });
@@ -152,7 +196,6 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
                 tr.appendChild(td);
             });
 
-            // Удаление строки
             const tdAction = document.createElement('td');
             tdAction.style.cssText = 'border:1px solid #dee2e6; text-align:center;';
             tdAction.innerHTML = `<button style="background:none; border:none; color:#dc3545; cursor:pointer;">✕</button>`;
@@ -165,38 +208,29 @@ export class DirectoryCanvasComponent extends BaseCanvasComponent {
             tableBody.appendChild(tr);
         });
 
-        // Обработчики кнопок меню
+        // Навешиваем событие на инпут поиска СРАЗУ после отрисовки строк
+        if (searchInput) {
+            searchInput.addEventListener('input', filterTableRows);
+            // Если поиск уже был активен до перерисовки (например, добавили новую строку), применяем фильтр
+            if (this.currentSearchQuery) filterTableRows();
+        }
+
+        // Кнопки верхнего меню
         wrapper.querySelector('#add-column-btn').addEventListener('click', () => {
             const name = prompt('Имя новой колонки:');
             if (name && !this.entity.columns.includes(name)) {
                 this.entity.columns.push(name);
                 this.entity.columnTypes[name] = 'TEXT';
-                this.saveAndRefresh(); // Теперь контекст "this" не теряется!
+                this.saveAndRefresh();
             }
         });
-
         wrapper.querySelector('#add-row-btn').addEventListener('click', () => {
             const row = {};
-            this.entity.columns.forEach(c => {
-                row[c] = this.entity.columnTypes[c] === 'BOOLEAN' ? false : '';
-            });
-            this.entity.rows.push(row);
-            this.saveAndRefresh(); // Контекст "this" сохранен!
+            this.entity.columns.forEach(c => { row[c] = this.entity.columnTypes[c] === 'BOOLEAN' ? false : ''; });
+            this.entity.rows.push(row); this.saveAndRefresh();
         });
         wrapper.querySelector('#dir-delete-btn').addEventListener('click', () => {
-            if (confirm(`Удалить весь справочник "${this.entity.title}"?`)) {
-                this.onDelete(this.entity.id);
-            }
-        });
-        return wrapper;
-    }
-
-    saveAndRefresh() {
-        this.onUpdate(this.entity);
-        const canvas = document.getElementById('workspace-canvas');
-        if (canvas) {
-            canvas.innerHTML = '';
-            canvas.appendChild(this.render());
-        }
+            if (confirm(`Удалить весь справочник "${this.entity.title}"?`)) { this.onDelete(this.entity.id); }
+        }); return wrapper;
     }
 }
