@@ -1,6 +1,7 @@
 // static/js/app.js
 import { DatabaseManager, EntityRepository } from './db.js';
 import { CanvasUIFactory } from './components/CanvasUIFactory.js';
+import { TabsManager } from './tabs/TabsManager.js'; // Импортируем Менеджер Вкладок
 
 const SyncStatus = {
   SYNCED: { class: 'synced', icon: '●', text: 'Облако' },
@@ -12,11 +13,17 @@ class WorkspaceApp {
   constructor() {
     this.workspaceId = 1;
     this.entities = [];
-    this.selectedEntity = null;
+    this.selectedEntity = null; // Текущая сущность, привязанная к активной вкладке
+    
     this.dbManager = new DatabaseManager('WorkspaceDB', 1);
     this.repository = new EntityRepository(this.dbManager);
+    this.canvasFactory = CanvasUIFactory; // Ссылка на фабрику UI-компонентов
+    
     this.dom = {};
     this.debounceTimer = null;
+    this.tabsManager = null; // Будет инициализирован в init()
+    
+    // Инициализируем пустой массив часовых поясов (подгрузится с Go-сервера Ubuntu)
     window.serverTimezones = [{ name: "UTC", offset: "+00:00" }];
   }
 
@@ -24,24 +31,28 @@ class WorkspaceApp {
     this.dom = {
       title: document.getElementById('workspace-title'),
       list: document.getElementById('entity-list'),
-      canvas: document.getElementById('workspace-canvas'),
+      tabsBar: document.getElementById('tabs-bar'),       // Контейнер полосы вкладок
+      canvas: document.getElementById('workspace-canvas'), // Контейнер холста
       syncStatus: document.getElementById('sync-status')
     };
 
     for (const [key, element] of Object.entries(this.dom)) {
       if (!element) {
-        console.error(`Критическая ошибка: Элемент DOM для '${key}' не найден!`);
-        return;
+        console.error(`Критическая ошибка: Элемент DOM для '${key}' не найден в index.html!`);
+        return; 
       }
     }
 
+    // Инициализируем Менеджер Вкладок (Mediator)
+    this.tabsManager = new TabsManager(this, this.dom.tabsBar, this.dom.canvas);
+
     await this.dbManager.connect();
     this.dom.title.textContent = `Пространство #${this.workspaceId}`;
-
+    
     this.initCloseSynchronization();
-    await this.loadServerTimezones();
-    await this.syncPull();
-    await this.loadEntities();
+    await this.loadServerTimezones(); // Подгружаем таймзоны Ubuntu
+    await this.syncPull();            // Подтягиваем данные из бэкапа Go
+    await this.loadEntities();        // Загружаем сущности в память и строим сайдбар
   }
 
   async loadServerTimezones() {
@@ -112,70 +123,65 @@ class WorkspaceApp {
   renderSidebar() {
     this.dom.list.innerHTML = '';
 
-    // Группы, включая Справочники
+    // Структурированные группы с дефолтными конфигурациями полей
     const groups = {
       note: { title: '📝 Заметки', defaultName: 'Новая заметка', defaultData: { content: '' }, items: [] },
       project: { title: '📁 Проекты', defaultName: 'Новый проект', defaultData: { tasks: [] }, items: [] },
-      directory: { title: '🗂️ Справочники', defaultName: 'Новый справочник', defaultData: { columns: ['Название', 'Описание'], rows: [] }, items: [] },
-      skill: { title: '🤖 Роботы-скиллы', defaultName: 'Новый робот', defaultData: { script: '' }, items: [] } // Добавлено!
+      directory: { title: '🗂️ Справочники', defaultName: 'Новый справочник', defaultData: { columns: ['Название', 'Описание'], columnTypes: { 'Название': 'TEXT', 'Описание': 'TEXT' }, rows: [] }, items: [] },
+      skill: { title: '🤖 Роботы-скиллы', defaultName: 'Новый робот', defaultData: { script: '' }, items: [] }
     };
 
-    // Сортируем элементы по группам
     this.entities.forEach(entity => {
       if (groups[entity.type]) {
         groups[entity.type].items.push(entity);
       }
     });
 
-    // Рендерим каждую группу
     for (const [type, group] of Object.entries(groups)) {
-      // Заголовок группы теперь создается ВСЕГДА (даже если пустой), чтобы была кнопка "+"
       const groupHeader = document.createElement('div');
       groupHeader.className = 'group-header';
       groupHeader.innerHTML = `
         <span>${group.title}</span>
-        <button class="add-group-item-btn" title="Добавить элемент">→</button>
+        <button class="add-group-item-btn" title="Создать новый элемент">+</button>
       `;
-
-      // Клик по кнопке "+" внутри группы
+      
       groupHeader.querySelector('.add-group-item-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         this.createNewEntity(type, { title: group.defaultName, ...group.defaultData });
       });
-
+      
       this.dom.list.appendChild(groupHeader);
 
-      // Рендерим элементы группы
       group.items.forEach(entity => {
         const li = document.createElement('li');
         li.className = 'entity-item';
-        if (this.selectedEntity && this.selectedEntity.id === entity.id) {
-          li.classList.add('active');
-        }
         li.textContent = entity.title;
         li.dataset.id = entity.id;
 
-        li.addEventListener('click', () => this.selectEntity(entity));
+        // При клике на сущность в сайдбаре — просим TabsManager открыть для неё вкладку-таблицу
+        li.addEventListener('click', () => {
+          this.tabsManager.openTab({
+            entityId: entity.id,
+            title: entity.title,
+            type: entity.type,
+            viewMode: 'table' // По умолчанию открываем как таблицу/список
+          });
+        });
         this.dom.list.appendChild(li);
       });
     }
+
+    // Подсвечиваем активный элемент в сайдбаре, если вкладки уже открыты
+    this.syncSidebarActiveState();
   }
 
-  selectEntity(entity) {
-    this.selectedEntity = entity;
-
+  // Метод синхронизации класса .active в сайдбаре на основе активной вкладки
+  syncSidebarActiveState() {
     this.dom.list.querySelectorAll('.entity-item').forEach(li => li.classList.remove('active'));
-    const activeLi = this.dom.list.querySelector(`.entity-item[data-id="${entity.id}"]`);
-    if (activeLi) activeLi.classList.add('active');
-
-    this.dom.canvas.innerHTML = '';
-
-    const component = CanvasUIFactory.create(
-      entity,
-      (ent) => this.updateEntity(ent),
-      (id) => this.deleteEntity(id)
-    );
-    this.dom.canvas.appendChild(component.render());
+    if (this.selectedEntity) {
+      const activeLi = this.dom.list.querySelector(`.entity-item[data-id="${this.selectedEntity.id}"]`);
+      if (activeLi) activeLi.classList.add('active');
+    }
   }
 
   async createNewEntity(type, rawData) {
@@ -192,27 +198,44 @@ class WorkspaceApp {
 
     this.entities.push(newEntityData);
     this.renderSidebar();
-    this.selectEntity(newEntityData);
+    
+    // Сразу открываем только что созданную сущность в Менеджере Вкладок
+    this.tabsManager.openTab({
+      entityId: newEntityData.id,
+      title: newEntityData.title,
+      type: newEntityData.type,
+      viewMode: 'table'
+    });
+
     this.syncPush();
   }
 
   async updateEntity(updatedEntity) {
     await this.repository.save(updatedEntity);
+    
+    // Обновляем текст заголовка вкладки, если сущность переименовали
+    const activeTab = this.tabsManager.tabs.find(t => t.entityId === updatedEntity.id);
+    if (activeTab && activeTab.viewMode === 'table') {
+      activeTab.title = updatedEntity.title;
+      this.tabsManager.renderTabBar();
+    }
+
+    // Обновляем текст в сайдбаре
     const listItem = this.dom.list.querySelector(`.entity-item[data-id="${updatedEntity.id}"]`);
     if (listItem) {
       listItem.textContent = updatedEntity.title;
     }
-    this.syncPushDebounced();
+
+    this.syncPushDebounced(); 
   }
 
   async deleteEntity(id) {
     await this.repository.delete(id);
     this.entities = this.entities.filter(ent => ent.id !== id);
-
-    if (this.selectedEntity && this.selectedEntity.id === id) {
-      this.selectedEntity = null;
-      this.dom.canvas.innerHTML = '<div id="empty-state">Выберите сущность слева, чтобы начать работу</div>';
-    }
+    
+    // Находим все вкладки, связанные с удаленной сущностью, и закрываем их
+    const tabsToClose = this.tabsManager.tabs.filter(t => t.entityId === id);
+    tabsToClose.forEach(t => this.tabsManager.closeTab(t.id));
 
     this.renderSidebar();
     clearTimeout(this.debounceTimer);
@@ -230,9 +253,9 @@ class WorkspaceApp {
   }
 }
 
+// Запуск и регистрация глобального инстанса для реляционных полей связи
 document.addEventListener('DOMContentLoaded', () => {
   const app = new WorkspaceApp();
   app.init();
-
-  window.appInstance = app;
+  window.appInstance = app; 
 });

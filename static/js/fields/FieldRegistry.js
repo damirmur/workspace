@@ -308,5 +308,108 @@ export const FieldTypes = {
       });
       return container;
     }
+  },
+    RELATION: {
+    // Режим отображения в таблице или карточке
+    renderView: (val, colName, currentEntity) => {
+      if (!val) return '—';
+      
+      // Находим, на какой справочник ссылается эта колонка
+      const targetDirectoryId = currentEntity.relationTargets?.[colName];
+      if (!targetDirectoryId || !window.appInstance) return '—';
+
+      // Ищем целевой справочник среди загруженных сущностей приложения
+      const targetDir = window.appInstance.entities.find(e => e.id === targetDirectoryId);
+      if (!targetDir || !targetDir.rows) return '[Справочник не найден]';
+
+      // Ищем конкретную строку по сохраненному UUID
+      const connectedRow = targetDir.rows.find(r => r.id === val);
+      if (!connectedRow) return '[Элемент удален]';
+
+      // Берем значение из самой первой колонки целевого справочника в качестве имени ссылки
+      const firstColumnName = targetDir.columns[0];
+      return connectedRow[firstColumnName] || `[Элемент без имени #Header]`;
+    },
+
+    // Режим редактирования (генерация селектора + кнопка создания на лету)
+    renderEdit: (val, onChange, colName, currentEntity, currentTabId, currentSourceRowId) => {
+      const container = document.createElement('div');
+      container.style.cssText = 'display:flex; gap:5px; align-items:center; width:100%;';
+      container.addEventListener('click', (e) => e.stopPropagation());
+
+      // Узнаем ID справочника, с которым строим связь
+      const targetDirectoryId = currentEntity.relationTargets?.[colName];
+      
+      const select = document.createElement('select');
+      select.style.cssText = 'flex-grow:1; padding:4px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;';
+      
+      // Опция по умолчанию "Не выбрано"
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = '-- Выберите элемент --';
+      select.appendChild(defaultOpt);
+
+      let targetDir = null;
+      if (targetDirectoryId && window.appInstance) {
+        targetDir = window.appInstance.entities.find(e => e.id === targetDirectoryId);
+      }
+
+      // Наполняем выпадающий список данными из целевого справочника, если он существует
+      if (targetDir && targetDir.rows) {
+        const firstCol = targetDir.columns[0];
+        targetDir.rows.forEach(row => {
+          const opt = document.createElement('option');
+          opt.value = row.id;
+          opt.textContent = row[firstCol] || `[ID: ${row.id.slice(0,6)}]`;
+          if (row.id === val) opt.selected = true;
+          select.appendChild(opt);
+        });
+      }
+
+      // Слушатель выбора элемента из существующих
+      select.addEventListener('change', () => {
+        onChange(select.value || null);
+      });
+
+      container.appendChild(select);
+
+      // ЕСЛИ МЫ НАХОДИМСЯ В ФОРМЕ (передан ID строки источника), добавляем кнопку "+ На лету"
+      if (currentSourceRowId && targetDir) {
+        const quickAddBtn = document.createElement('button');
+        quickAddBtn.textContent = '➕';
+        quickAddBtn.title = `Создать новый элемент в справочнике "${targetDir.title}" на лету`;
+        quickAddBtn.style.cssText = 'padding:4px 8px; font-size:0.9rem; cursor:pointer; background:#e7f3ff; border:1px solid #b3d7ff; color:#0066cc; border-radius:4px; font-weight:bold;';
+        
+        quickAddBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          
+          if (!window.appInstance || !window.appInstance.tabsManager) {
+            console.error("Менеджер вкладок недоступен для создания на лету.");
+            return;
+          }
+
+          // Запускаем ООП-сценарий: просим оркестратор открыть форму создания в целевом справочнике
+          window.appInstance.tabsManager.openTab({
+            entityId: targetDir.id,
+            title: `Новый в "${targetDir.title}" (На лету)`,
+            type: 'directory',
+            viewMode: 'form',       // Режим карточки
+            targetRowId: null,      // null означает, что это создание новой записи
+            
+            // Передаем билет возврата (callback) для синхронизации вкладок
+            callback: {
+              sourceTabId: currentTabId,       // Кто запросил данные
+              sourceRowId: currentSourceRowId, // Какую конкретно строку обновить при возврате
+              sourceColumn: colName            // Какую ячейку заполнить
+            }
+          });
+        });
+
+        container.appendChild(quickAddBtn);
+      }
+
+      return container;
+    }
   }
+
 };
