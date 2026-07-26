@@ -12,10 +12,17 @@ export class DirectoryFormComponent {
     if (!this.tab.activeSubTab) this.tab.activeSubTab = 'properties';
 
     if (this.isNew) {
+      let initialOwner = null;
+      if (this.tab.ownerContext) {
+        const { directoryId, rowId, relationType } = this.tab.ownerContext;
+        initialOwner = relationType === 'MANY_TO_MANY' ? [{ directoryId, rowId }] : { directoryId, rowId };
+      }
+
       this.formData = { 
-        id: crypto.randomUUID(),
+        id: crypto.randomUUID(), 
         parentId: this.tab.forcedParentId || null,
-        _ownerContext: this.tab.ownerContext || null 
+        _status: 1, // По умолчанию статус 1 - Сохранен
+        _ownerContext: initialOwner 
       };
       
       this.ctx.entity.columns.forEach(col => {
@@ -28,10 +35,10 @@ export class DirectoryFormComponent {
     } else {
       const originalRow = this.ctx.entity.rows.find(r => r.id === this.tab.targetRowId);
       this.formData = JSON.parse(JSON.stringify(originalRow || {}));
+      if (this.formData._status === undefined) this.formData._status = 1;
       if (!this.formData.parentId) this.formData.parentId = null;
     }
 
-    // Подключаем дочерние рендереры-сателлиты карточки
     this.fieldsGenerator = new DirectoryFormFields(this);
     this.tabsGenerator = new DirectoryFormTabs(this);
   }
@@ -42,11 +49,22 @@ export class DirectoryFormComponent {
     formWrapper.style.cssText = 'display:flex; flex-direction:column; height:100%; box-sizing:border-box;';
 
     const firstColName = this.ctx.entity.columns[0];
+    const isPosted = this.formData._status === 2;
+
     formWrapper.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #cbd5e1; flex-shrink:0;">
-        <h3 style="margin:0; color:#1e293b; font-size:1.1rem;">
-          ${this.isNew ? '➕ Создание нового элемента' : `📝 Карточка: ${this.formData[firstColName] || 'Редактирование'}`}
-        </h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; background:${isPosted ? '#f0fdf4' : '#f8fafc'}; padding:10px; border-radius:6px; border:1px solid ${isPosted ? '#bbf7d0' : '#cbd5e1'}; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:15px;">
+          <h3 style="margin:0; color:#1e293b; font-size:1.1rem;">
+            ${this.isNew ? '➕ Создание новой карточки' : `📝 Карточка: ${this.formData[firstColName] || 'Редактирование'}`}
+          </h3>
+          
+          <!-- СИСТЕМНЫЙ СЕЛЕКТОР УПРАВЛЕНИЯ СТАТУСАМИ КАРТОЧКИ -->
+          <select id="form-system-status-select" style="padding:4px 8px; font-size:0.85rem; border-radius:4px; font-weight:bold; cursor:pointer; background:white; border:1px solid #cbd5e1;">
+            <option value="1" ${this.formData._status === 1 ? 'selected' : ''}>🔵 Сохранен</option>
+            <option value="2" ${this.formData._status === 2 ? 'selected' : ''}>🟢 Проведен</option>
+            <option value="0" ${this.formData._status === 0 ? 'selected' : ''}>❌ Помечен на удаление</option>
+          </select>
+        </div>
         <div style="display:flex; gap:10px;">
           <button id="form-cancel-btn" style="padding:6px 12px; background:#64748b; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.85rem;">Отмена</button>
           <button id="form-save-btn" style="padding:6px 12px; background:#10b981; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.85rem;">Сохранить</button>
@@ -59,8 +77,14 @@ export class DirectoryFormComponent {
     const tabsBar = formWrapper.querySelector('#sub-tabs-bar');
     const contentArea = formWrapper.querySelector('#sub-tab-content-area');
 
-    // Делегируем прорисовку закладок и инпутов сателлитам
     this.tabsGenerator.render(tabsBar, contentArea);
+
+    // Слушатель смены системного статуса в шапке карточки
+    formWrapper.querySelector('#form-system-status-select').addEventListener('change', (e) => {
+      this.formData._status = Number(e.target.value);
+      // Перерисовываем весь контент карточки, чтобы мгновенно заблокировать/разблокировать инпуты полей
+      this.app.tabsManager.renderCanvasContent();
+    });
 
     formWrapper.querySelector('#form-cancel-btn').addEventListener('click', () => this.app.tabsManager.closeTab(this.tab.id));
     formWrapper.querySelector('#form-save-btn').addEventListener('click', () => this.saveElementAction());
@@ -77,6 +101,15 @@ export class DirectoryFormComponent {
     }
 
     await this.ctx.onUpdate(this.ctx.entity);
+
+    // СИНХРОНИЗАЦИЯ НАЗВАНИЯ ВКЛАДКИ ПРИ СОХРАНЕНИИ
+    const activeTab = this.app.tabsManager.tabs.find(t => t.id === this.tab.id);
+    if (activeTab) {
+      const firstCol = this.ctx.entity.columns[0];
+      activeTab.title = `📝 ${String(this.formData[firstCol] || 'Элемент').slice(0, 12)}`;
+      this.app.tabsManager.renderTabBar();
+    }
+
     delete this.tab.activeSubTab;
     this.app.tabsManager.closeTab(this.tab.id);
   }

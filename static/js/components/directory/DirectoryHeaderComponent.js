@@ -9,6 +9,9 @@ export class DirectoryHeaderComponent {
     headRowElement.innerHTML = '';
 
     this.ctx.entity.columns.forEach((colName, colIndex) => {
+      if (Array.isArray(this.ctx.entity.hiddenColumns) && this.ctx.entity.hiddenColumns.includes(colName)) {
+        return; // Не рендерим th для скрытой колонки
+      }
       const currentType = this.ctx.entity.columnTypes[colName] || 'TEXT';
       const th = document.createElement('th');
       th.style.cssText = 'background:#f1f3f5; border:1px solid #dee2e6; padding:10px; text-align:left; position:relative; min-width:140px;';
@@ -21,6 +24,8 @@ export class DirectoryHeaderComponent {
     <select class="col-type-select" style="font-size:0.75rem; padding:2px; cursor:pointer;">
       <option value="TEXT" ${currentType === 'TEXT' ? 'selected' : ''}>Текст</option>
       <option value="NUMBER" ${currentType === 'NUMBER' ? 'selected' : ''}>Число</option>
+      <option value="FINANCE" ${currentType === 'FINANCE' ? 'selected' : ''}>Финансовое</option>
+      <option value="QUANTITY" ${currentType === 'QUANTITY' ? 'selected' : ''}>Количество</option>
       <option value="BOOLEAN" ${currentType === 'BOOLEAN' ? 'selected' : ''}>Чекбокс</option>
       <option value="TIMESTAMP" ${currentType === 'TIMESTAMP' ? 'selected' : ''}>Время (UTC)</option>
       <option value="JSON" ${currentType === 'JSON' ? 'selected' : ''}>JSON</option>

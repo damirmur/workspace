@@ -6,18 +6,27 @@ export class DirectoryTableSearch {
   }
 
   /**
-   * Логика фильтрации и Join-обхода строк в памяти
+   * Сверхбыстрая фильтрация строк на основе контекста Master-Detail
    */
   getFilteredRows() {
     let rows = this.ctx.entity.rows || [];
 
-    // Фильтр Master-Detail связи, если мы внутри карточки элемента
     if (this.ctx.tab.ownerContext) {
-      rows = rows.filter(r => 
-        r._ownerContext &&
-        r._ownerContext.directoryId === this.ctx.tab.ownerContext.directoryId &&
-        r._ownerContext.rowId === this.ctx.tab.ownerContext.rowId
-      );
+      const { directoryId, rowId, relationType } = this.ctx.tab.ownerContext;
+
+      rows = rows.filter(r => {
+        if (!r._ownerContext) return false;
+
+        if (relationType === 'MANY_TO_MANY' && Array.isArray(r._ownerContext)) {
+          return r._ownerContext.some(ctx => 
+            String(ctx.directoryId) === String(directoryId) && String(ctx.rowId) === String(rowId)
+          );
+        } else if (relationType === 'ONE_TO_MANY' && !Array.isArray(r._ownerContext)) {
+          return String(r._ownerContext.directoryId) === String(directoryId) && 
+                 String(r._ownerContext.rowId) === String(rowId);
+        }
+        return false;
+      });
     }
 
     const query = this.ctx.searchQuery.trim().toLowerCase();
@@ -27,7 +36,6 @@ export class DirectoryTableSearch {
       return this.ctx.entity.columns.some(colName => {
         const cellValue = row[colName];
         if (!cellValue) return false;
-        
         return String(cellValue).toLowerCase().includes(query);
       });
     });
@@ -41,7 +49,6 @@ export class DirectoryTableSearch {
 
     containerElement.querySelector('#dir-search-input').addEventListener('input', (e) => {
       this.ctx.searchQuery = e.target.value;
-      // Мгновенно обновляем только строки в tbody без перерисовки инпута (сохраняем фокус клавиатуры!)
       this.ctx.rowsComponent.render(tableBodyElement, this.getFilteredRows());
     });
   }

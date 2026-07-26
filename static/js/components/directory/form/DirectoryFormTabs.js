@@ -3,7 +3,7 @@ import { DirectoryCanvasComponent } from '../table/DirectoryCanvasComponent.js';
 
 export class DirectoryFormTabs {
   constructor(formContext) {
-    this.form = formContext; // Ссылка на родительский DirectoryFormComponent
+    this.form = formContext; 
   }
 
   render(tabsBarElement, contentAreaElement) {
@@ -12,20 +12,34 @@ export class DirectoryFormTabs {
 
     const subTabsConfig = [{ id: 'properties', title: '📋 Основные свойства' }];
 
-    if (!this.form.isNew && this.form.ctx.entity.allowedSubDirectories) {
-      this.form.ctx.entity.allowedSubDirectories.forEach(childDirId => {
-        const childDir = this.form.app.entities.find(e => e.id === childDirId);
+    if (!this.form.isNew && Array.isArray(this.form.ctx.entity.allowedSubDirectories)) {
+      this.form.ctx.entity.allowedSubDirectories.forEach(relConfig => {
+        const childDir = this.form.app.entities.find(e => e.id === relConfig.childDirectoryId);
         if (childDir) {
-          const childRowsCount = (childDir.rows || []).filter(r => 
-            r._ownerContext && 
-            r._ownerContext.directoryId === this.form.ctx.entity.id &&
-            r._ownerContext.rowId === this.form.formData.id
-          ).length;
+          
+          // АЛГОРИТМ ПОДСЧЕТА СТРОК: Проверяем связи с учетом ONE_TO_MANY или MANY_TO_MANY
+          const childRowsCount = (childDir.rows || []).filter(row => {
+            if (!row._ownerContext) return false;
+
+            if (relConfig.relationType === 'MANY_TO_MANY' && Array.isArray(row._ownerContext)) {
+              // Ищем совпадение в массиве контекстов владельцев
+              return row._ownerContext.some(ctx => 
+                String(ctx.directoryId) === String(this.form.ctx.entity.id) && 
+                String(ctx.rowId) === String(this.form.formData.id)
+              );
+            } else if (relConfig.relationType === 'ONE_TO_MANY' && !Array.isArray(row._ownerContext)) {
+              // Прямое сопоставление одиночного эксклюзивного владельца
+              return String(row._ownerContext.directoryId) === String(this.form.ctx.entity.id) && 
+                     String(row._ownerContext.rowId) === String(this.form.formData.id);
+            }
+            return false;
+          }).length;
 
           subTabsConfig.push({
-            id: `subdir_${childDirId}`,
+            id: `subdir_${childDir.id}`,
             title: `🗂️ ${childDir.title} (${childRowsCount})`,
-            childDir: childDir
+            childDir: childDir,
+            relationType: relConfig.relationType
           });
         }
       });
@@ -59,6 +73,7 @@ export class DirectoryFormTabs {
       this.form.fieldsGenerator.render(contentAreaElement);
     } else {
       const childDir = subTabConfig.childDir;
+      
       const subTableTabContext = {
         id: `subtable_tab_${childDir.id}`,
         entityId: childDir.id,
@@ -66,7 +81,8 @@ export class DirectoryFormTabs {
         viewType: 'table',
         ownerContext: {
           directoryId: this.form.ctx.entity.id,
-          rowId: this.form.formData.id
+          rowId: this.form.formData.id,
+          relationType: subTabConfig.relationType // Прокидываем спроектированный тип связи подтаблице
         }
       };
 

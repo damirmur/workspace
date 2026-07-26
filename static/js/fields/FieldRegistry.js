@@ -219,7 +219,7 @@ export const FieldTypes = {
       return container;
     }
   },
-   ZIP_FILE: {
+  ZIP_FILE: {
     renderView: (val) => {
       if (!val || !Array.isArray(val) || val.length === 0) return '📎 Пусто';
       const totalSize = val.reduce((acc, f) => acc + (f.size || 0), 0);
@@ -263,7 +263,7 @@ export const FieldTypes = {
         filesList.forEach((fileObj) => {
           const item = document.createElement('div');
           const cleanName = fileObj.fileName.replace(/^\uFEFF/, '');
-          
+
           item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:white; padding:4px 6px; border-radius:4px; border:1px solid #e2e8f0; font-size:0.75rem; gap:10px;';
           item.innerHTML = `
             <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1; color:#1e293b;" title="${cleanName}">📄 ${cleanName}</span>
@@ -292,7 +292,7 @@ export const FieldTypes = {
               const originalBuffer = await zippedFile.async("arraybuffer");
               const blob = new Blob([originalBuffer], { type: fileObj.mimeType || "application/octet-stream" });
               const url = URL.createObjectURL(blob);
-              
+
               const a = document.createElement('a');
               a.href = url;
               a.download = cleanName;
@@ -320,7 +320,7 @@ export const FieldTypes = {
       renderQueue();
 
       addBtn.addEventListener('click', (e) => { e.stopPropagation(); filePicker.click(); });
-      
+
       filePicker.addEventListener('change', async (e) => {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
@@ -342,9 +342,9 @@ export const FieldTypes = {
               try {
                 const originalBuffer = evt.target.result;
                 const zip = new window.JSZip();
-                
+
                 zip.file(file.name, originalBuffer);
-                
+
                 const zippedUint8Array = await zip.generateAsync({
                   type: "uint8array",
                   compression: "DEFLATE",
@@ -356,7 +356,7 @@ export const FieldTypes = {
                 filesList.push({
                   id: crypto.randomUUID(),
                   fileName: sanitizedName,
-                  size: zippedUint8Array.length, 
+                  size: zippedUint8Array.length,
                   mimeType: file.type || "application/octet-stream",
                   payload: Array.from(zippedUint8Array)
                 });
@@ -379,6 +379,45 @@ export const FieldTypes = {
       return container;
     }
   },
+  FINANCE: {
+    renderView: (val) => {
+      if (val === undefined || val === null || val === '') return '—';
+      return Number(val).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    },
+    renderEdit: (val, onChange) => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.01'; 
+      input.style.cssText = 'width:100%; padding:4px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;';
+      input.value = val !== undefined && val !== null ? Number(val).toFixed(2) : '';
+
+      input.addEventListener('blur', () => {
+        const num = input.value ? parseFloat(Number(input.value).toFixed(2)) : 0;
+        onChange(num);
+      });
+      return input;
+    }
+  },
+
+  QUANTITY: {
+    renderView: (val) => {
+      if (val === undefined || val === null || val === '') return '—';
+      return Number(val).toLocaleString('ru-RU', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    },
+    renderEdit: (val, onChange) => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.001'; 
+      input.style.cssText = 'width:100%; padding:4px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;';
+      input.value = val !== undefined && val !== null ? Number(val).toFixed(3) : '';
+
+      input.addEventListener('blur', () => {
+        const num = input.value ? parseFloat(Number(input.value).toFixed(3)) : 0;
+        onChange(num);
+      });
+      return input;
+    }
+  },
   RELATION: {
     renderView: (val, colName, currentEntity) => {
       if (!val) return '—';
@@ -391,8 +430,7 @@ export const FieldTypes = {
       const connectedRow = targetDir.rows.find(r => r.id === val);
       if (!connectedRow) return '[Элемент удален]';
 
-      // ИСПРАВЛЕНО: Выводим строго "Наименование" при просмотре ячейки
-      return connectedRow['Наименование'] || `[Без имени: ${connectedRow.id.slice(0,6)}]`;
+      return connectedRow['Наименование'] || `[Без имени: ${connectedRow.id.slice(0, 6)}]`;
     },
 
     renderEdit: (val, onChange, colName, currentEntity, currentTabId, currentSourceRowId) => {
@@ -401,10 +439,10 @@ export const FieldTypes = {
       container.addEventListener('click', (e) => e.stopPropagation());
 
       const targetDirectoryId = currentEntity.relationTargets?.[colName];
-      
+
       const select = document.createElement('select');
       select.style.cssText = 'flex-grow:1; padding:4px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;';
-      
+
       const defaultOpt = document.createElement('option');
       defaultOpt.value = '';
       defaultOpt.textContent = '-- Выберите элемент --';
@@ -419,8 +457,7 @@ export const FieldTypes = {
         targetDir.rows.forEach(row => {
           const opt = document.createElement('option');
           opt.value = row.id;
-          // ИСПРАВЛЕНО: Выводим строго "Наименование" внутри выпадающего списка селектора
-          opt.textContent = row['Наименование'] || `[ID: ${row.id.slice(0,6)}]`;
+          opt.textContent = row['Наименование'] || `[ID: ${row.id.slice(0, 6)}]`;
           if (row.id === val) opt.selected = true;
           select.appendChild(opt);
         });
@@ -435,9 +472,9 @@ export const FieldTypes = {
       if (currentSourceRowId && targetDir) {
         const quickAddBtn = document.createElement('button');
         quickAddBtn.textContent = '➕';
-        quickAddBtn.title = `Создать новый элемент в справочнике "${targetDir.title}" на лету`;
+        quickAddBtn.title = `Создать на лету`;
         quickAddBtn.style.cssText = 'padding:4px 8px; font-size:0.9rem; cursor:pointer; background:#e7f3ff; border:1px solid #b3d7ff; color:#0066cc; border-radius:4px; font-weight:bold;';
-        
+
         quickAddBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!window.appInstance || !window.appInstance.tabsManager) return;
@@ -456,7 +493,6 @@ export const FieldTypes = {
             }
           });
         });
-
         container.appendChild(quickAddBtn);
       }
 
