@@ -124,12 +124,22 @@ class WorkspaceApp {
     this.dom.list.innerHTML = '';
 
     // Структурированные группы с дефолтными конфигурациями полей
-    const groups = {
-      note: { title: '📝 Заметки', defaultName: 'Новая заметка', defaultData: { content: '' }, items: [] },
-      project: { title: '📁 Проекты', defaultName: 'Новый проект', defaultData: { tasks: [] }, items: [] },
-      directory: { title: '🗂️ Справочники', defaultName: 'Новый справочник', defaultData: { columns: ['Название', 'Описание'], columnTypes: { 'Название': 'TEXT', 'Описание': 'TEXT' }, rows: [] }, items: [] },
-      skill: { title: '🤖 Роботы-скиллы', defaultName: 'Новый робот', defaultData: { script: '' }, items: [] }
-    };
+const groups = {
+  note: { title: '📝 Заметки', defaultName: 'Новая заметка', defaultData: { content: '' }, items: [] },
+  project: { title: '📁 Проекты', defaultName: 'Новый проект', defaultData: { tasks: [] }, items: [] },
+  // ИСПРАВЛЕНО: Первая колонка теперь строго зафиксирована как "Наименование"
+  directory: { 
+    title: '🗂️ Справочники', 
+    defaultName: 'Новый справочник', 
+    defaultData: { 
+      columns: ['Наименование', 'Описание'], 
+      columnTypes: { 'Наименование': 'TEXT', 'Описание': 'TEXT' }, 
+      rows: [] 
+    }, 
+    items: [] 
+  },
+  skill: { title: '🤖 Роботы-скиллы', defaultName: 'Новый робот', defaultData: { script: '' }, items: [] }
+};
 
     this.entities.forEach(entity => {
       if (groups[entity.type]) {
