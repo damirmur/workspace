@@ -26,7 +26,7 @@ class TimeZoneConverter {
     const sign = offsetStr.startsWith('+') ? 1 : -1;
     const [h, m] = offsetStr.slice(1).split(':').map(Number);
     const offsetMs = (h * 60 + m) * 60000 * sign;
-    
+
     const localDate = new Date(utcTimestamp + offsetMs);
     return localDate.toISOString().slice(0, 16);
   }
@@ -84,11 +84,11 @@ export const FieldTypes = {
     },
     renderEdit: (val, onChange) => {
       const availableZones = window.serverTimezones || [{ name: "UTC", offset: "+00:00" }];
-      
+
       // Автоопределение зоны браузера для подстановки в пустые ячейки
       const detectedZoneName = guessBrowserZone();
       const matchedZone = availableZones.find(z => z.name === detectedZoneName);
-      
+
       const defaultOffset = matchedZone ? matchedZone.offset : getBrowserOffset();
       const defaultZoneName = matchedZone ? matchedZone.name : 'Local';
 
@@ -103,7 +103,7 @@ export const FieldTypes = {
       container.style.display = 'flex';
       container.style.gap = '5px';
       container.style.alignItems = 'center';
-      
+
       // Чтобы клики внутри контейнера (по селектору или инпуту) не закрывали ячейку раньше времени
       container.addEventListener('click', (e) => e.stopPropagation());
 
@@ -116,13 +116,13 @@ export const FieldTypes = {
       // 2. Селектор зон
       const select = document.createElement('select');
       select.style.fontSize = '0.8rem';
-      
+
       availableZones.forEach(zone => {
         const opt = document.createElement('option');
         opt.value = zone.offset;
         opt.dataset.name = zone.name;
         opt.textContent = `${zone.name} (UTC${zone.offset})`;
-        
+
         // Подсвечиваем сохраненную или автоматически определенную зону
         if (zone.name === cellData.zoneName) {
           opt.selected = true;
@@ -165,13 +165,13 @@ export const FieldTypes = {
     renderEdit: (val, onChange) => {
       const container = document.createElement('div');
       container.addEventListener('click', (e) => e.stopPropagation());
-      
+
       const textarea = document.createElement('textarea');
       textarea.style.width = '100%';
       textarea.style.height = '60px';
       // Выводим объект в красивом многострочном формате
       textarea.value = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val || '{}');
-      
+
       const errorMsg = document.createElement('div');
       errorMsg.style.cssText = 'color:#dc3545; font-size:0.75rem; display:none;';
       errorMsg.textContent = '❌ Невалидный JSON';
@@ -198,11 +198,11 @@ export const FieldTypes = {
         try {
           // Безопасный запуск разбора выражения в изолированной функции
           const looseParsed = new Function(`return (${rawText});`)();
-          
+
           if (looseParsed && typeof looseParsed === 'object') {
             errorMsg.style.display = 'none';
             // Сами форматируем в строгий JSON с двойными кавычками для нормального сохранения
-            textarea.value = JSON.stringify(looseParsed, null, 2); 
+            textarea.value = JSON.stringify(looseParsed, null, 2);
             onChange(looseParsed);
             return;
           }
@@ -219,101 +219,171 @@ export const FieldTypes = {
       return container;
     }
   },
- ZIP_FILE: {
+   ZIP_FILE: {
     renderView: (val) => {
-      if (!val || !val.fileName) return '📎 Пусто';
-      return `📦 ${val.fileName} (${(val.size / 1024).toFixed(1)} KB)`;
+      if (!val || !Array.isArray(val) || val.length === 0) return '📎 Пусто';
+      const totalSize = val.reduce((acc, f) => acc + (f.size || 0), 0);
+      const fileWord = val.length === 1 ? 'файл' : (val.length < 5 ? 'файла' : 'файлов');
+      return `📦 ${val.length} ${fileWord} (сжато до ${(totalSize / 1024).toFixed(1)} KB)`;
     },
+
     renderEdit: (val, onChange) => {
-      const container = document.createElement('div');
-      container.addEventListener('click', (e) => e.stopPropagation());
-      container.innerHTML = `
-        <input type="file" style="display:none;" id="zip-file-picker">
-        <button id="zip-upload-btn" style="padding:2px 6px; font-size:0.8rem; cursor:pointer;">Загрузить</button>
-        <span id="zip-info" style="font-size:0.8rem; margin-left:5px;"></span>
-      `;
-      const filePicker = container.querySelector('#zip-file-picker');
-      const uploadBtn = container.querySelector('#zip-upload-btn');
-      const infoSpan = container.querySelector('#zip-info');
-
-      // Если файл уже есть в базе данных
-      if (val && val.fileName) {
-        const cleanName = val.fileName.replace(/^\uFEFF/, '');
-        infoSpan.textContent = cleanName;
-        
-        // 1. Кнопка СКАЧИВАНИЯ
-        const downloadBtn = document.createElement('button');
-        downloadBtn.textContent = '💾';
-        downloadBtn.title = 'Скачать файл';
-        downloadBtn.style.cssText = 'border:none; background:none; cursor:pointer; margin-left:5px;';
-        downloadBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const blob = new Blob([new Uint8Array(val.payload)], {type: "application/zip"});
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = cleanName;
-          a.click();
-          URL.revokeObjectURL(url);
-        });
-        container.appendChild(downloadBtn);
-
-        // 2. НОВАЯ КНОПКА УДАЛЕНИЯ (Очистки поля)
-        const deleteFileBtn = document.createElement('button');
-        deleteFileBtn.textContent = '🗑️';
-        deleteFileBtn.title = 'Удалить файл из ячейки';
-        deleteFileBtn.style.cssText = 'border:none; background:none; cursor:pointer; margin-left:5px; color:#dc3545;';
-        deleteFileBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (confirm(`Вы уверены, что хотите удалить файл "${cleanName}" из этой ячейки?`)) {
-            infoSpan.textContent = '';
-            // Передаем null, чтобы полностью стереть объект файла и освободить память в IndexedDB
-            onChange(null); 
-          }
-        });
-        container.appendChild(deleteFileBtn);
+      let filesList = [];
+      if (Array.isArray(val)) {
+        filesList = val;
+      } else if (val && val.fileName) {
+        filesList = [{ id: crypto.randomUUID(), ...val }];
       }
 
-      uploadBtn.addEventListener('click', (e) => { e.stopPropagation(); filePicker.click(); });
-      
-      filePicker.addEventListener('change', async (e) => {
-        const file = e.target.files[0]; 
-        if (!file) return;
+      const container = document.createElement('div');
+      container.className = 'zip-file-manager';
+      container.style.cssText = 'display:flex; flex-direction:column; gap:8px; width:100%; max-width:400px; background:#f8fafc; padding:8px; border-radius:6px; border:1px solid #cbd5e1;';
+      container.addEventListener('click', (e) => e.stopPropagation());
 
-        infoSpan.textContent = 'Загрузка...';
-        
-        try {
-          const reader = new FileReader();
-          reader.onload = async (evt) => {
-            const arrayBuffer = evt.target.result;
-            let sanitizedName = file.name.replace(/^\uFEFF/, '');
-            if (!sanitizedName.toLowerCase().endsWith('.zip')) {
-              sanitizedName += '.zip';
+      container.innerHTML = `
+        <input type="file" style="display:none;" id="zip-file-picker" multiple>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:6px; margin-bottom:4px;">
+          <span style="font-size:0.8rem; font-weight:600; color:#475569;">Файловый менеджер (ZIP)</span>
+          <button id="zip-add-btn" style="padding:3px 8px; font-size:0.8rem; background:#0ea5e9; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">+ Добавить</button>
+        </div>
+        <div id="zip-files-queue" style="display:flex; flex-direction:column; gap:4px; max-height:150px; overflow-y:auto;"></div>
+      `;
+
+      const filePicker = container.querySelector('#zip-file-picker');
+      const addBtn = container.querySelector('#zip-add-btn');
+      const queueContainer = container.querySelector('#zip-files-queue');
+
+      const renderQueue = () => {
+        queueContainer.innerHTML = '';
+        if (filesList.length === 0) {
+          queueContainer.innerHTML = '<span style="font-size:0.75rem; color:#94a3b8; font-style:italic; text-align:center; padding:4px;">Файлов нет</span>';
+          return;
+        }
+
+        filesList.forEach((fileObj) => {
+          const item = document.createElement('div');
+          const cleanName = fileObj.fileName.replace(/^\uFEFF/, '');
+          
+          item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:white; padding:4px 6px; border-radius:4px; border:1px solid #e2e8f0; font-size:0.75rem; gap:10px;';
+          item.innerHTML = `
+            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1; color:#1e293b;" title="${cleanName}">📄 ${cleanName}</span>
+            <div style="display:flex; gap:2px; flex-shrink:0; align-items:center;">
+              <button class="file-dl-btn" style="border:none; background:none; cursor:pointer; font-size:0.8rem; padding:2px;" title="Скачать оригинальный файл">💾</button>
+              <button class="file-del-btn" style="border:none; background:none; cursor:pointer; font-size:0.8rem; padding:2px; color:#ef4444;" title="Удалить">🗑️</button>
+            </div>
+          `;
+
+          item.querySelector('.file-dl-btn').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (typeof window.JSZip === 'undefined') {
+              alert("Ошибка: Библиотека JSZip не доступна для распаковки.");
+              return;
             }
 
-            const fileData = {
-              fileName: sanitizedName,
-              size: file.size,
-              payload: Array.from(new Uint8Array(arrayBuffer))
-            };
-            
-            infoSpan.textContent = fileData.fileName;
-            onChange(fileData);
-          };
-          reader.readAsArrayBuffer(file); 
-        } catch (err) { 
-          infoSpan.textContent = 'Ошибка ZIP'; 
-          console.error(err); 
+            try {
+              const zip = new window.JSZip();
+              const loadedZip = await zip.loadAsync(new Uint8Array(fileObj.payload));
+              const zippedFile = loadedZip.file(cleanName);
+              if (!zippedFile) {
+                alert("Ошибка: Оригинальный файл не найден внутри упакованного контейнера.");
+                return;
+              }
+
+              const originalBuffer = await zippedFile.async("arraybuffer");
+              const blob = new Blob([originalBuffer], { type: fileObj.mimeType || "application/octet-stream" });
+              const url = URL.createObjectURL(blob);
+              
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = cleanName;
+              a.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              alert("Не удалось распаковать оригинальный файл.");
+              console.error(err);
+            }
+          });
+
+          item.querySelector('.file-del-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm(`Удалить файл "${cleanName}" из списка?`)) {
+              filesList = filesList.filter(f => f.id !== fileObj.id);
+              onChange(filesList.length > 0 ? filesList : null);
+              renderQueue();
+            }
+          });
+
+          queueContainer.appendChild(item);
+        });
+      };
+
+      renderQueue();
+
+      addBtn.addEventListener('click', (e) => { e.stopPropagation(); filePicker.click(); });
+      
+      filePicker.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        addBtn.disabled = true;
+        addBtn.textContent = 'Сжатие...';
+
+        if (typeof window.JSZip === 'undefined') {
+          alert("Критическая ошибка: Библиотека архивации JSZip не загружена!");
+          addBtn.disabled = false;
+          addBtn.textContent = '+ Добавить';
+          return;
         }
+
+        for (const file of files) {
+          await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+              try {
+                const originalBuffer = evt.target.result;
+                const zip = new window.JSZip();
+                
+                zip.file(file.name, originalBuffer);
+                
+                const zippedUint8Array = await zip.generateAsync({
+                  type: "uint8array",
+                  compression: "DEFLATE",
+                  compressionOptions: { level: 9 }
+                });
+
+                let sanitizedName = file.name.replace(/^\uFEFF/, '');
+
+                filesList.push({
+                  id: crypto.randomUUID(),
+                  fileName: sanitizedName,
+                  size: zippedUint8Array.length, 
+                  mimeType: file.type || "application/octet-stream",
+                  payload: Array.from(zippedUint8Array)
+                });
+              } catch (zipErr) {
+                console.error("Ошибка сжатия:", zipErr);
+              }
+              resolve();
+            };
+            reader.readAsArrayBuffer(file);
+          });
+        }
+
+        onChange(filesList);
+        filePicker.value = "";
+        addBtn.disabled = false;
+        addBtn.textContent = '+ Добавить';
+        renderQueue();
       });
+
       return container;
     }
   },
-    RELATION: {
+  RELATION: {
     // Режим отображения в таблице или карточке
     renderView: (val, colName, currentEntity) => {
       if (!val) return '—';
-      
+
       // Находим, на какой справочник ссылается эта колонка
       const targetDirectoryId = currentEntity.relationTargets?.[colName];
       if (!targetDirectoryId || !window.appInstance) return '—';
@@ -339,10 +409,10 @@ export const FieldTypes = {
 
       // Узнаем ID справочника, с которым строим связь
       const targetDirectoryId = currentEntity.relationTargets?.[colName];
-      
+
       const select = document.createElement('select');
       select.style.cssText = 'flex-grow:1; padding:4px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc;';
-      
+
       // Опция по умолчанию "Не выбрано"
       const defaultOpt = document.createElement('option');
       defaultOpt.value = '';
@@ -360,7 +430,7 @@ export const FieldTypes = {
         targetDir.rows.forEach(row => {
           const opt = document.createElement('option');
           opt.value = row.id;
-          opt.textContent = row[firstCol] || `[ID: ${row.id.slice(0,6)}]`;
+          opt.textContent = row[firstCol] || `[ID: ${row.id.slice(0, 6)}]`;
           if (row.id === val) opt.selected = true;
           select.appendChild(opt);
         });
@@ -379,10 +449,10 @@ export const FieldTypes = {
         quickAddBtn.textContent = '➕';
         quickAddBtn.title = `Создать новый элемент в справочнике "${targetDir.title}" на лету`;
         quickAddBtn.style.cssText = 'padding:4px 8px; font-size:0.9rem; cursor:pointer; background:#e7f3ff; border:1px solid #b3d7ff; color:#0066cc; border-radius:4px; font-weight:bold;';
-        
+
         quickAddBtn.addEventListener('click', (e) => {
           e.stopPropagation();
-          
+
           if (!window.appInstance || !window.appInstance.tabsManager) {
             console.error("Менеджер вкладок недоступен для создания на лету.");
             return;
@@ -395,7 +465,7 @@ export const FieldTypes = {
             type: 'directory',
             viewMode: 'form',       // Режим карточки
             targetRowId: null,      // null означает, что это создание новой записи
-            
+
             // Передаем билет возврата (callback) для синхронизации вкладок
             callback: {
               sourceTabId: currentTabId,       // Кто запросил данные
